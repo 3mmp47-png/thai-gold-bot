@@ -80,13 +80,36 @@ def get_latest_price() -> float:
     return _latest_cached_price
 
 
+def _get_latest_actionable_signal(df_ind):
+    """
+    Check the current developing bar (-1) AND the 2 most recently closed 5m bars (-2, -3).
+    Why? When a new 5m bar just opens on Yahoo Finance, iloc[-1] has Close == Open (incomplete),
+    while the BUY/SELL signal actually completed on iloc[-2]!
+    """
+    latest_sig = generate_signal_for_row(df_ind.iloc[-1], df_ind.iloc[-2])
+    if latest_sig.action in ("BUY", "SELL"):
+        return latest_sig, str(df_ind.index[-1])
+
+    for offset in (-2, -3):
+        if len(df_ind) >= abs(offset) + 1:
+            sig = generate_signal_for_row(df_ind.iloc[offset], df_ind.iloc[offset - 1])
+            if sig.action in ("BUY", "SELL"):
+                # Keep live current price for button display, but preserve the triggered BUY/SELL action & reasons
+                sig.thai_gold_price = latest_sig.thai_gold_price
+                sig.xau_usd = latest_sig.xau_usd
+                sig.usd_thb = latest_sig.usd_thb
+                return sig, str(df_ind.index[offset])
+
+    return latest_sig, str(df_ind.index[-1])
+
+
 def run_once(dry_run: bool = False, chat_id_override: Optional[str] = None) -> str:
     """Fetch latest Thai Gold data + news, generate analysis, and send Telegram alert with manual Buy/Sell buttons."""
     global _latest_cached_price
     fetch_days = min(max(LOOKBACK_DAYS, 7), 14)
     df = fetch_thai_gold_intraday(period=f"{fetch_days}d", interval=TIMEFRAME)
     df_ind = add_indicators(df)
-    signal = generate_signal_for_row(df_ind.iloc[-1], df_ind.iloc[-2])
+    signal, _ = _get_latest_actionable_signal(df_ind)
     _latest_cached_price = signal.thai_gold_price
 
     gta = fetch_live_gta_price()
@@ -137,6 +160,7 @@ def run_realtime_loop(dry_run: bool = False, max_runtime_sec: int = 0) -> None:
         CHECK_INTERVAL_SEC,
     )
     last_action: Optional[str] = None
+    alerted_bars: set[str] = set()
     fetch_days = min(max(LOOKBACK_DAYS, 7), 14)
 
     try:
@@ -144,7 +168,7 @@ def run_realtime_loop(dry_run: bool = False, max_runtime_sec: int = 0) -> None:
             try:
                 df = fetch_thai_gold_intraday(period=f"{fetch_days}d", interval=TIMEFRAME)
                 df_ind = add_indicators(df)
-                signal = generate_signal_for_row(df_ind.iloc[-1], df_ind.iloc[-2])
+                signal, bar_key = _get_latest_actionable_signal(df_ind)
                 _latest_cached_price = signal.thai_gold_price
 
                 # 1. Check if any user-recorded BUY position reached TP / Trailing Lock / SL
@@ -161,13 +185,16 @@ def run_realtime_loop(dry_run: bool = False, max_runtime_sec: int = 0) -> None:
                     )
                     send_telegram_message(alert_text, dry_run=dry_run, reply_markup=kb)
 
-                # 2. Check market signal alert
+                # 2. Check market signal alert (never miss a newly closed BUY/SELL bar!)
+                is_new_signal_bar = (signal.action in ("BUY", "SELL")) and (bar_key not in alerted_bars)
                 should_alert = (
                     (last_action is None)
                     or (signal.action != last_action)
-                    or (signal.action in ("BUY", "SELL"))
+                    or is_new_signal_bar
                 )
                 if should_alert:
+                    if signal.action in ("BUY", "SELL"):
+                        alerted_bars.add(bar_key)
                     gta = fetch_live_gta_price()
                     news = fetch_gold_news(limit=6)
                     message = generate_ai_analysis(signal, news, gta)
