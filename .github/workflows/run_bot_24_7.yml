@@ -1,0 +1,49 @@
+name: Thai Gold Telegram Bot 24/7
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: thai-gold-bot-24-7
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  run-gold-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Thai Gold Bot Shift (28 minutes continuous real-time & button polling)
+        env:
+          TZ: Asia/Bangkok
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TIMEFRAME: 5m
+          SPREAD_THB: "50"
+          CHECK_INTERVAL_SEC: "300"
+        run: python main.py --max-runtime-sec 1680
+
+      - name: Save user trade history and portfolio stats back to repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add user_portfolio.json user_trade_history.csv || true
+          git diff --staged --quiet || (git commit -m "Auto-update user trade stats [skip ci]" && git push)
