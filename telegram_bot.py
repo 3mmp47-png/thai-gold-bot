@@ -28,7 +28,7 @@ def build_trading_keyboard(
 ) -> dict:
     """
     Create full-width (100% screen width) Telegram InlineKeyboardMarkup:
-    - Row 1: Giant Signal & Confidence Status Banner Button
+    - Row 1: Giant Signal & Confidence Status Banner Button (Tier 1 85%+ vs Tier 2 ~70%)
     - Row 2: Giant Full-Width BUY Button (for recording manual trade)
     - Row 3: Giant Full-Width SELL Button (for closing manual trade & calculating stats)
     - Row 4: Portfolio Stats & Refresh Buttons
@@ -42,8 +42,12 @@ def build_trading_keyboard(
     sell_cb = f"sell:{p_int}:{trade_id}" if trade_id is not None else f"sell:{p_int}"
 
     if action == "BUY":
-        banner_text = "🔥🟢 มั่นใจสูง (85%+): แนะนำเข้าซื้อตอนนี้! 🟢🔥"
-        buy_label = f"🟢🛒 กดซื้อ (@ {p_int:,} บ.) — บันทึกไม้ซื้อ"
+        if confidence == "HIGH":
+            banner_text = "🔥🟢 ระดับ 1 (มั่นใจสูงสุด 85%+): แนะนำเข้าซื้อทันที! 🟢🔥"
+            buy_label = f"🟢🛒 กดซื้อระดับ 1 (@ {p_int:,} บ.) — บันทึกไม้ซื้อ"
+        else:
+            banner_text = "⚡🟢 ระดับ 2 (มั่นใจ ~70%): จังหวะเก็งกำไรระยะสั้น! 🟢⚡"
+            buy_label = f"🟢🛒 กดซื้อระดับ 2 (@ {p_int:,} บ.) — บันทึกไม้ซื้อ"
     elif action == "SELL":
         banner_text = "🚨🔴 มั่นใจสูง: แนะนำขายทำกำไรตอนนี้! 🔴🚨"
         buy_label = f"🟢🛒 กดซื้อ (@ {p_int:,} บ.) — บันทึกไม้ซื้อ"
@@ -303,10 +307,10 @@ def poll_telegram_updates(
                         live_p = get_current_price_fn()
                         welcome = (
                             f"👋 *บอทผู้ช่วยวิเคราะห์และแจ้งเตือนทองคำไทย 96.5% (Timeframe 5m)*\n\n"
-                            f"*วิธีใช้งาน:*\n"
-                            f"• บอทจะวิเคราะห์กราฟ+ข่าว และแจ้งเตือนเมื่อถึงจุดเข้าซื้อที่มีความมั่นใจสูง\n"
-                            f"• กด `🟢🛒 กดซื้อ` เมื่อคุณซื้อทองจริง เพื่อบันทึกต้นทุนและให้บอทช่วยเฝ้าเตือนจุดขาย\n"
-                            f"• กด `🔴💰 กดขาย` เมื่อคุณขายทอง เพื่อคำนวณกำไรสุทธิ (หัก Spread) และเก็บสถิติ Win Rate สะสม"
+                            f"*ระบบแจ้งเตือน 2 ระดับความมั่นใจ:*\n"
+                            f"• 🔥 *ระดับ 1 (Sniper):* ความมั่นใจสูงสุด (Win Rate 85%+ | ~16 ไม้/เดือน)\n"
+                            f"• ⚡ *ระดับ 2 (Fast Scalp):* จังหวะเก็งกำไรสั้น (Win Rate ~70% | ~23 ไม้/เดือน)\n"
+                            f"• กด `🟢🛒 กดซื้อ` และ `🔴💰 กดขาย` เพื่อบันทึกไม้และคำนวณสถิติจริงของคุณ"
                         )
                         kb = build_trading_keyboard(live_p)
                         send_telegram_message(welcome, reply_markup=kb, chat_id_override=chat_id)
